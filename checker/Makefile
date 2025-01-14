@@ -6,11 +6,11 @@ build:
 	java -jar $(ANTLR) cool/lexer/CoolLexer.g4
 	java -jar $(ANTLR) -lib cool/lexer -listener -visitor cool/parser/CoolParser.g4
 
-tester:
-	javac -cp $(CLASSPATH) cool/tester/Tester2.java
+compiler:
+	javac -cp $(CLASSPATH) cool/compiler/Compiler.java
 
 run:
-	java -cp $(CLASSPATH) cool.tester.Tester2
+	./tester.sh
 
 clean:
 	@find . -name '*.class' -exec rm -rf {} \;
