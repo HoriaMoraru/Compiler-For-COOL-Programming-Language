@@ -1,5 +1,6 @@
 package cool.compiler;
 
+import cool.asmgen.AsmGenVisitor;
 import cool.ast.abstracts.ASTNode;
 import cool.ast.visitor.*;
 import org.antlr.v4.runtime.*;
@@ -151,5 +152,9 @@ public class Compiler {
         if (SymbolTable.hasSemanticErrors()) {
             System.err.println("Compilation halted");
         }
+
+        final AsmGenVisitor asmGenVisitor = new AsmGenVisitor();
+        final String asm = ast.accept(asmGenVisitor).render();
+        System.out.println(asm);
     }
 }

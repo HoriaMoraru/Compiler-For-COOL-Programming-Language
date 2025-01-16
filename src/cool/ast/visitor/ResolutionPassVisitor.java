@@ -51,7 +51,14 @@ public class ResolutionPassVisitor implements ASTVisitor<Void> {
     }
 
     private boolean checkOverride(Method method, String methodName, ClassSymbol currentClass, MethodSymbol methodSymbol, MethodSymbol parentMethodSymbol) {
-        if (method.getFormals().size() != parentMethodSymbol.getMethod().getFormals().size()) {
+        if (methodSymbol == null || methodSymbol.getMethod() == null) {
+            return false;
+        }
+
+        if (parentMethodSymbol == null || parentMethodSymbol.getMethod() == null) {
+            return false;
+        }
+        if (method.getFormals() != null && method.getFormals().size() != parentMethodSymbol.getMethod().getFormals().size()) {
             SymbolTable.error(method.getContext(), method.getIdentifier(),
                     String.format("Class %s overrides method %s with different number of formal parameters",
                             currentClass.getName(), methodName));

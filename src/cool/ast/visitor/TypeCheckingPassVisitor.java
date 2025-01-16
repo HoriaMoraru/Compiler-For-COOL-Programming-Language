@@ -432,6 +432,9 @@ public class TypeCheckingPassVisitor implements ASTVisitor<TypeSymbol> {
         currentScope.add(new IdSymbol(localDefinition.getIdentifier().getText(), new TypeSymbol(localDefinition.getType().getText())));
         if (localDefinition.getInit() != null) {
             final TypeSymbol initType = localDefinition.getInit().accept(this);
+            if (initType == null) {
+                return null;
+            }
             final ClassSymbol initClass = (ClassSymbol) SymbolTable.getGlobals().lookup(initType.getName());
             if (initClass == null) {
                 return null;

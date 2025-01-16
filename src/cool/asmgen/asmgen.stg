@@ -1,0 +1,98 @@
+sequence(e) ::= "<e; separator=\"\n\">"
+
+// Main program structure
+program(data, text) ::= <<
+    .data
+    .align  2
+    <data>
+
+    .text
+    <text>
+>>
+
+// Constant definitions
+int_const(value, tag, size) ::= <<
+int_const<value>:
+    .word   <tag>
+    .word   <size>
+    .word   Int_dispTab
+    .word   <value>
+>>
+
+str_const(index, tag, size, int_value, text) ::= <<
+str_const<index>:
+    .word   <tag>
+    .word   <size>
+    .word   String_dispTab
+    .word   int_const<int_value>
+    .asciiz "<text>"
+    .align  2
+>>
+
+bool_const(value, tag, size) ::= <<
+bool_const<value>:
+    .word   <tag>
+    .word   <size>
+    .word   Bool_dispTab
+    .word   <value>
+>>
+
+// Class-related data
+class_protObj(name, tag, size, dispTab) ::= <<
+<name>_protObj:
+    .word   <tag>
+    .word   <size>
+    .word   <dispTab>
+>>
+
+class_dispTab(name, methods) ::= <<
+<name>_dispTab:
+<methods; separator="\n">
+>>
+
+class_nameTab(names) ::= <<
+class_nameTab:
+<names; separator="\n">
+>>
+
+class_objTab(entries) ::= <<
+class_objTab:
+<entries; separator="\n">
+>>
+
+// Initialization method
+class_init(name, parent) ::= <<
+<name>_init:
+    addiu   $sp $sp -12
+    sw      $fp 12($sp)
+    sw      $s0 8($sp)
+    sw      $ra 4($sp)
+    addiu   $fp $sp 4
+    move    $s0 $a0
+<if(parent)>
+    jal     <parent>_init
+<endif>
+    move    $a0 $s0
+    lw      $fp 12($sp)
+    lw      $s0 8($sp)
+    lw      $ra 4($sp)
+    addiu   $sp $sp 12
+    jr      $ra
+>>
+
+// Method definition
+method(name, body) ::= <<
+<name>:
+    addiu   $sp $sp -12
+    sw      $fp 12($sp)
+    sw      $s0 8($sp)
+    sw      $ra 4($sp)
+    addiu   $fp $sp 4
+    move    $s0 $a0
+<body>
+    lw      $fp 12($sp)
+    lw      $s0 8($sp)
+    lw      $ra 4($sp)
+    addiu   $sp $sp 12
+    jr      $ra
+>>
