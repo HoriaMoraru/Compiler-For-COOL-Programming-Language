@@ -27,6 +27,10 @@ public class MethodSymbol extends IdSymbol implements Scope {
         return method;
     }
 
+    public Map<String, Symbol> getSymbols() {
+        return symbols;
+    }
+
     public void setMethod(Method method) {
         this.method = method;
     }
