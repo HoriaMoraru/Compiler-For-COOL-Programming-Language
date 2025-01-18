@@ -346,9 +346,10 @@ initClass(thisClass, parentClass, attrSetup) ::= <<
     addiu $sp, $sp, 12
     jr    $ra
 >>
-initAndProt(prot, init) ::= <<
+initAndProtAndMethodSet(prot, init, methodSet) ::= <<
 <prototype>
 <init>
+<methodSet>
 >>
 ////////////////////////////////////////////////////////////////////////
 // Creating method tables

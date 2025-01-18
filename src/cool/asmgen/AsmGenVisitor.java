@@ -94,7 +94,7 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
             ST dispatchTable = templates.getInstanceOf("createDispatchTable")
                     .add("thisClass", c.getType().getText())
-                    .add("methodSet", "");
+                    .add("methodSet", classData.getAttribute("methodSet"));
             allDispatchTables.add(dispatchTable);
 
             ST protObj = templates.getInstanceOf("putWord")
@@ -148,8 +148,18 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
                 .add("parentClass", parentSym.getName())
                 .add("attrSetup",   "");
 
-        for (Feature feature : coolClass.getFeatures()) {
-            feature.accept(this);
+        List<ST> methodSet = new ArrayList<>();
+
+        if (!className.equals("Main")) {
+            for (Feature feature : coolClass.getFeatures()) {
+                if (feature instanceof Method method) {
+                    method.accept(this);
+                    methodSet.add(templates.getInstanceOf("putWord")
+                            .add("item", className + "." + method.getIdentifier().getText()));
+                } else {
+                    feature.accept(this);
+                }
+            }
         }
 
         currentScope = saveScope;
@@ -162,9 +172,10 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
                       .add("intTag",  intTagLength)
                       .add("textVal", className));
 
-        return templates.getInstanceOf("initAndProt")
+        return templates.getInstanceOf("initAndProtAndMethodSet")
                 .add("prot", prototypeST)
-                .add("init", initST);
+                .add("init", initST)
+                .add("methodSet", mergeST(methodSet));
     }
 
     private int calculateWordSizeForStringConstant(CoolClass coolClass) {
