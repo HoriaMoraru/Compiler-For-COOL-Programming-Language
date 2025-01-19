@@ -10,6 +10,7 @@ import cool.structures.symbol.MethodSymbol;
 import cool.structures.symbol.SymbolTable;
 import org.stringtemplate.v4.ST;
 import org.stringtemplate.v4.STGroupFile;
+import cool.ast.abstracts.Expression;
 
 import java.util.*;
 
@@ -85,6 +86,15 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
         List<ST> classProtoPointers = new ArrayList<>();
         List<ST> classInits = new ArrayList<>();
 
+        String fileName = program.getToken().getTokenSource().getSourceName();
+        fileName = fileName.substring(fileName.lastIndexOf('/') + 1);
+        final int fileNameIntTagLength = intConstants.computeIfAbsent(fileName.length(), k -> intConstants.size());
+        stringData.add(templates.getInstanceOf("strConstantDefinition")
+                .add("strTag",  "File")
+                .add("size",    calculateWordSizeForSpecificStringConstant(fileName))
+                .add("intTag",  fileNameIntTagLength)
+                .add("textVal", fileName));
+
         for (CoolClass c : program.getClasses()) {
             ST classData = c.accept(this);
 
@@ -109,8 +119,6 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
         ST finalProgram = templates.getInstanceOf("program");
         parseIntConstantsToIntData(intConstants);
-
-        addMainMethod();
 
         finalProgram.add("integerData",        mergeST(intData));
         finalProgram.add("stringData",         mergeST(stringData));
@@ -150,15 +158,13 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
         List<ST> methodSet = new ArrayList<>();
 
-        if (!className.equals("Main")) {
-            for (Feature feature : coolClass.getFeatures()) {
-                if (feature instanceof Method method) {
-                    method.accept(this);
-                    methodSet.add(templates.getInstanceOf("putWord")
-                            .add("item", className + "." + method.getIdentifier().getText()));
-                } else {
-                    feature.accept(this);
-                }
+        for (Feature feature : coolClass.getFeatures()) {
+            if (feature instanceof Method method) {
+                method.accept(this);
+                methodSet.add(templates.getInstanceOf("putWord")
+                        .add("item", className + "." + method.getIdentifier().getText()));
+            } else {
+                feature.accept(this);
             }
         }
 
@@ -167,10 +173,10 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
         final int intTagLength = intConstants.computeIfAbsent(className.length(), k -> intConstants.size());
 
         stringData.add(templates.getInstanceOf("strConstantDefinition")
-                      .add("strTag",  className)
-                      .add("size",    calculateWordSizeForStringConstant(coolClass))
-                      .add("intTag",  intTagLength)
-                      .add("textVal", className));
+                .add("strTag",  className)
+                .add("size",    calculateWordSizeForStringConstant(coolClass))
+                .add("intTag",  intTagLength)
+                .add("textVal", className));
 
         return templates.getInstanceOf("initAndProtAndMethodSet")
                 .add("prot", prototypeST)
@@ -179,21 +185,14 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
     }
 
     private int calculateWordSizeForStringConstant(CoolClass coolClass) {
-        return (int) (4 + Math.ceil(coolClass.getType().getText().length() / 4.0));
+        return (int) (4 + (Math.ceil(coolClass.getType().getText().length() + 1) / 4.0));
     }
 
-    private void addMainMethod() {
-        ST mainMethod = templates.getInstanceOf("defineMipsMethod")
-                .add("name",           "Main.main")
-                .add("bodyInstr",      "la $a0 int_const0")
-                .add("prepareLocals",   templates.getInstanceOf("allocLocals").add("bytes", 0).render())
-                .add("freeLocalInstr", "")
-                .add("freeParamInstr", "");
-
-        methodData.add(mainMethod);
+    private int calculateWordSizeForSpecificStringConstant(String str) {
+        return (int) (4 + (Math.ceil(str.length() + 1) / 4.0));
     }
 
-    private int calculateLocalBytes(Method method) {
+    private int calculateLocalBytes() {
         // Example calculation: 4 bytes per local variable
         MethodSymbol methodScope = (MethodSymbol) currentScope;
         return methodScope.getSymbols().size() * 4;
@@ -208,18 +207,25 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
     public ST visit(Method method) {
         String methodName = method.getIdentifier().getText();
         ClassSymbol enclosingClassSymbol = (ClassSymbol) currentScope;
+
         MethodSymbol methodSymbol = (MethodSymbol) enclosingClassSymbol.getMethods().get(methodName);
 
         Scope saveScope = currentScope;
         currentScope = methodSymbol;
 
-        ST prepareLocals = templates.getInstanceOf("allocLocals").add("bytes", calculateLocalBytes(method));
+        ST prepareLocals = templates.getInstanceOf("allocLocals").add("bytes", calculateLocalBytes());
         ST freeParamInstr = templates.getInstanceOf("freeParameters").add("bytes", calculateParamBytes(method))
                 .add("paramAlias", methodName);
 
+        ST bodyInstr = method.getBody().accept(this);
+
+        if (bodyInstr == null) {
+            bodyInstr = new ST("");
+        }
+
         ST methodST = templates.getInstanceOf("defineMipsMethod")
                 .add("name",           enclosingClassSymbol.getName() + "." + methodName)
-                .add("bodyInstr",      "")
+                .add("bodyInstr",      bodyInstr.render())
                 .add("prepareLocals",   prepareLocals.render())
                 .add("freeLocalInstr", "")
                 .add("freeParamInstr",  freeParamInstr.render());
@@ -258,7 +264,11 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
     @Override
     public ST visit(Id id) {
-        return null;
+        if (id.getToken().getText().equals("self")) {
+            return new ST("    move $a0 $s0");
+        }
+
+        return new ST("    lw      $a0 20($s0)");
     }
 
     @Override
@@ -293,12 +303,65 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
     @Override
     public ST visit(ImplicitCall implicitCall) {
-        return null;
+        ST invokeMethodST = templates.getInstanceOf("invokeMethod");
+
+        invokeMethodST.add("callerExpr", (new ST("    move $a0 $s0")).render());
+
+        List<ST> paramLoadSTs = new ArrayList<>();
+        for (Expression arg : implicitCall.getArgs()) {
+            paramLoadSTs.add(arg.accept(this));
+        }
+        invokeMethodST.add("paramLoads", mergeST(paramLoadSTs).render());
+
+        String dispatchTag = implicitCall.getIdentifier().getText() ;
+        String fileLabel = "File";
+        int lineNbr = implicitCall.getContext().start.getLine();
+
+        int offsetVal = 0;
+
+        invokeMethodST.add("dispatchTag", dispatchTag);
+        invokeMethodST.add("fileLabel", fileLabel);
+        invokeMethodST.add("lineNbr", lineNbr);
+        invokeMethodST.add("offsetVal", offsetVal);
+
+        // Generate the grab table code
+        ST grabTableST = new ST("    lw $t1 8($a0)");
+        invokeMethodST.add("grabTable", grabTableST.render());
+
+        return invokeMethodST;
     }
 
     @Override
     public ST visit(Call call) {
-        return null;
+
+        ST invokeMethodST = templates.getInstanceOf("invokeMethod");
+
+        ST callerST = call.getCaller().accept(this);
+        invokeMethodST.add("callerExpr", callerST.render());
+
+
+        List<ST> paramLoadSTs = new ArrayList<>();
+        for (Expression arg : call.getArgs()) {
+            paramLoadSTs.add(arg.accept(this));
+        }
+        invokeMethodST.add("paramLoads", mergeST(paramLoadSTs).render());
+
+        String dispatchTag = call.getIdentifier().getText() ;
+        String fileLabel = "File";
+        int lineNbr = call.getContext().start.getLine();
+
+        int offsetVal = 0;
+
+        invokeMethodST.add("dispatchTag", dispatchTag);
+        invokeMethodST.add("fileLabel", fileLabel);
+        invokeMethodST.add("lineNbr", lineNbr);
+        invokeMethodST.add("offsetVal", offsetVal);
+
+        // Generate the grab table code
+        ST grabTableST = new ST("    lw $t1 8($a0)");
+        invokeMethodST.add("grabTable", grabTableST.render());
+
+        return invokeMethodST;
     }
 
     @Override
@@ -333,11 +396,15 @@ public class AsmGenVisitor implements ASTVisitor<ST> {
 
     @Override
     public ST visit(BlockStatement blockStatement) {
-        return null;
+        return blockStatement.getStatement().accept(this);
     }
 
     @Override
     public ST visit(BlockExpression blockExpression) {
-        return null;
+        List<ST> exprSTs = new ArrayList<>();
+        for (Expression expr : blockExpression.getStatements()) {
+            exprSTs.add(expr.accept(this));
+        }
+        return mergeST(exprSTs);
     }
 }
